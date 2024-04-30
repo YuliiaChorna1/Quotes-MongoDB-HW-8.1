@@ -1,7 +1,11 @@
-
+import redis
 import connect
+from redis_lru import RedisLRU
 from abc import ABC, abstractmethod
 from models import Quotes, Authors, Tag
+
+client = redis.StrictRedis(host="localhost", port=6379, password=None)
+cache = RedisLRU(client)
 
 
 class DataProvider(ABC):
@@ -47,61 +51,22 @@ class MongoDataProvider(DataProvider):
         return result
 
 
-class Cache(ABC):
-    def __init__(self) -> None:
-        ...
-
-    @abstractmethod
-    def get_cache_record(self, key: str) -> str:
-        ...
-    
-    @abstractmethod
-    def set_cache_record(self, key: str, value: str) -> None:
-        ...
-
-    def get_cache_key(self, prefix: str, suffix: str) -> str:
-        return f"{prefix}:{suffix}"
-
-
-class RedisCache(Cache):
-    def __init__(self) -> None:
-        ...
-
-    def get_cache_record(self, key: str) -> str:
-        ...
-    
-    def set_cache_record(self, key: str, value: str) -> None:
-        ...
-
-
 class DataManager():
-    def __init__(self, cache: Cache, data_provider: DataProvider) -> None:
-        self.__cache: Cache = cache
+    def __init__(self, data_provider: DataProvider) -> None:
         self.__data_provider: DataProvider = data_provider
 
+    @cache
     def query_by_author(self, name: str) -> list[str]:
-        cache_key = self.__cache.get_cache_key("author", name) # "author:steve martin"
-        result = self.__cache.get_cache_record(cache_key)
-        if result: 
-            return result
         author = self.__data_provider.query_author_by_name(name)
         if author:
             result = self.__data_provider.query_quotes_by_author(author)
-            if result:
-                self.__cache.set_cache_record(cache_key, result)
         else: 
             result = [f"Author with name '{name.title()}' not found"]        
         return result or ["No results found"]
 
-
+    @cache
     def query_by_tags(self, tags: list[str]) -> str:
-        cache_key = self.__cache.get_cache_key("tags", ",".join(tags)) # "tags:live,life"
-        result = self.__cache.get_cache_record(cache_key)
-        if result: 
-            return result
         result = self.__data_provider.query_quotes_by_tags(tags)
-        if result:
-            self.__cache.set_cache_record(cache_key, result)
         return result or ["No results found"]
 
 
@@ -136,17 +101,20 @@ def format_output(output) -> str:
         return output
     return "\n".join(output)
 
+
 def get_help() -> str:
     return """
     Supported commands:
     name: [author name] - prints quotes by author name
     tag:[tag] - prints quotes by a tag
     tags:[tag-1],[tag-2],...,[tag-n] - prints quotes by a tags
+    For exit enter any of exit-commands:
+    good bye | close | exit | stop
 """
 
 
 def main():
-    manager = CommandManager(DataManager(RedisCache(), MongoDataProvider()))
+    manager = CommandManager(DataManager(MongoDataProvider()))
     print(get_help())
     while True:
         user_input = input(">>> ")
@@ -160,55 +128,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# from models import Notes
-# import connect
-
-
-# print('--- All notes ---')
-# notes = Notes.objects()
-# for note in notes:
-#     records = [f'description: {record.description}, done: {record.done}' for record in note.records]
-#     tags = [tag.name for tag in note.tags]
-#     print(f"id: {note.id} name: {note.name} date: {note.created} records: {records} tags: {tags}")
-
-# print('--- Notes with tag Fun ---')
-
-# notes = Notes.objects(tags__name='Fun')
-# for note in notes:
-#     records = [f'description: {record.description}, done: {record.done}' for record in note.records]
-#     tags = [tag.name for tag in note.tags]
-#     print(f"id: {note.id} name: {note.name} date: {note.created} records: {records} tags: {tags}")
-
-# print('--- Notes with tags Fun and Purchases ---')
-
-# notes = Notes.objects(tags__name__in=['Fun', 'Purchases'])
-# for note in notes:
-#     records = [f'description: {record.description}, done: {record.done}' for record in note.records]
-#     tags = [tag.name for tag in note.tags]
-#     print(f"id: {note.id} name: {note.name} date: {note.created} records: {records} tags: {tags}")
-
-# Оновлення 
-
-# _id = '662d01f45f29a385de55da60'
-# note = Notes.objects(id=_id)
-# note.update(name='New Shopping') 
-
-# Bидалення даних
-
-# _id = '662d01f45f29a385de55da60'
-# note = Notes.objects(id=_id).delete()
